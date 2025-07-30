@@ -45,6 +45,7 @@
 </div>
 <script>const stripe = Stripe("{{ STRIPE_PUBLIC_KEY }}");</script>
 <!--Реализация со stripe payment intent-->
+<script>const host = "{{ host }}";</script>
 <script src="{% static 'deps/js/item_intent.js' %}"></script>
 <!--Реализация со stripe session-->
 {# <script>const item_url = "{% url 'goods:item_buy' item.id %}";</script>#}

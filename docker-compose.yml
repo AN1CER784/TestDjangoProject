@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17.5-alpine3.21
+    restart: always
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
+  web:
+    build:
+      dockerfile: ./Dockerfile
+    command: >
+      /bin/bash -c "
+      python manage.py makemigrations &&
+      python manage.py migrate &&
+      gunicorn TestDjangoProject.wsgi:application --bind 0.0.0.0:8000 --timeout 300 --log-level debug"
+    volumes:
+      - .:/app
+      - ./static:/app/static
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLIC_KEY=${STRIPE_PUBLIC_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+    depends_on:
+      - db
+
+
+  nginx:
+    image: nginx:1.25.3-alpine3.18
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./static:/app/static
+    depends_on:
+      - web
+
+volumes:
+  db_data:
+  static:

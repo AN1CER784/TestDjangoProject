@@ -19,7 +19,7 @@ class ItemView(DataMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        user_context = self.get_user_context(title="Страница товара", stripe_public_key=True)
+        user_context = self.get_user_context(title="Страница товара", host=self.request.get_host(), stripe_public_key=True)
         return context | user_context
 
 
@@ -36,7 +36,8 @@ class ItemBuyView(DataMixin, View):
         stripe_service = StripeService(order=order)
 
         # Реализация со stripe session
-        # session_id = stripe_service.create_checkout_session()
+        # host = request.get_host()
+        # session_id = stripe_service.create_checkout_session(host)
         # return JsonResponse(data={"id": session_id})
 
         # Реализация со stripe payment intent

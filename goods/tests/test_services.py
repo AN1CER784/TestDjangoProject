@@ -115,7 +115,7 @@ class StripeServiceCreateSessionTest(TestCase):
     @patch("stripe.checkout.Session.create")
     def test_create_stripe_session_calls_api(self, mock_create):
         mock_create.return_value = MagicMock(id="sess_abc123")
-        session_id = self.stripe_service.create_checkout_session()
+        session_id = self.stripe_service.create_checkout_session("localhost")
         mock_create.assert_called_once()
         self.assertEqual(session_id, "sess_abc123")
 
