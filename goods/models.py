@@ -2,6 +2,7 @@ import stripe
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
+from django.urls import reverse
 
 from TestDjangoProject.settings import STRIPE_SECRET_KEY
 
@@ -12,7 +13,7 @@ CURRENCIES_CHOICES = {
 
 
 class Item(models.Model):
-    """Модель Item для товара подлежащего покупке, содержит название, описание и цену товара"""
+    """Модель Item для товара подлежащего покупке, содержит название, описание, цену и валюту товара"""
 
     name = models.CharField(max_length=255, verbose_name="Название")
     description = models.TextField(max_length=800, verbose_name="Описание")
@@ -25,6 +26,9 @@ class Item(models.Model):
         verbose_name = "Товар"
         verbose_name_plural = "Товары"
         ordering = ("id",)
+
+    def get_absolute_url(self):
+        return reverse("goods:item_lookout", kwargs={"id": self.pk})
 
 
 class Order(models.Model):
