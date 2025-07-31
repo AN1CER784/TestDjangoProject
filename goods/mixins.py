@@ -8,7 +8,7 @@ from goods.utils import get_by_pk
 class DataMixin:
     def get_user_context(self, **kwargs):
         context = kwargs
-        public = context["stripe_public_key"]
+        public = context.get("stripe_public_key", None)
         if public:
             context["STRIPE_PUBLIC_KEY"] = STRIPE_PUBLIC_KEY
         return context

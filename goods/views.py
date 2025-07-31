@@ -1,12 +1,13 @@
 from django.http import JsonResponse
+from django.urls import reverse
 from django.views import View
 from django.views.generic import DetailView, TemplateView
 
 from goods.mixins import DataMixin
 from goods.models import Discount, Tax
-from goods.utils import get_by_pk
-from goods.services.stripe_service import StripeService
 from goods.services.db_service import create_order
+from goods.services.stripe_service import StripeService
+from goods.utils import get_by_pk
 
 
 class ItemView(DataMixin, DetailView):
@@ -19,7 +20,9 @@ class ItemView(DataMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        user_context = self.get_user_context(title="Страница товара", host=self.request.get_host(), stripe_public_key=True)
+        user_context = self.get_user_context(title="Страница товара", stripe_public_key=True,
+                                             item_buy_url=self.request.build_absolute_uri(reverse('goods:item_buy', kwargs={"id": self.object.pk})),
+                                             complete_url=self.request.build_absolute_uri(reverse('goods:complete_page')))
         return context | user_context
 
 
@@ -36,9 +39,10 @@ class ItemBuyView(DataMixin, View):
         stripe_service = StripeService(order=order)
 
         # Реализация со stripe session
-        # host = request.get_host()
-        # session_id = stripe_service.create_checkout_session(host)
-        # return JsonResponse(data={"id": session_id})
+        # session_id = stripe_service.create_checkout_session(
+        #     success_url=request.build_absolute_uri(reverse('goods:success_page')),
+        #     cancel_url=request.build_absolute_uri(reverse('goods:cancel_page')))
+        # return JsonResponse(data={"sessionId": session_id})
 
         # Реализация со stripe payment intent
         client_secret = stripe_service.create_payment_intent()

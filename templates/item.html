@@ -44,11 +44,11 @@
 	</div>
 </div>
 <script>const stripe = Stripe("{{ STRIPE_PUBLIC_KEY }}");</script>
+<script> const item_url = "{{ item_buy_url }}"</script>
 <!--Реализация со stripe payment intent-->
-<script>const host = "{{ host }}";</script>
+<script> const complete_url = "{{ complete_url }}"</script>
 <script src="{% static 'deps/js/item_intent.js' %}"></script>
 <!--Реализация со stripe session-->
-{# <script>const item_url = "{% url 'goods:item_buy' item.id %}";</script>#}
 {# <script src="{% static 'deps/js/item_session.js' %}"></script>#}
 </body>
 </html>

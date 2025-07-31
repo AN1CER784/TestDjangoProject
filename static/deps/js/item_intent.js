@@ -7,7 +7,7 @@ document
 
 // Fetches a payment intent and captures the client secret
 async function initialize() {
-    const response = await fetch(`http://${host}:80/buy/1`, {
+    const response = await fetch(item_url, {
         method: "GET",
         headers: {"Content-Type": "application/json"},
     });
@@ -46,7 +46,7 @@ async function handleSubmit(e) {
         elements,
         confirmParams: {
             // Make sure to change this to your payment completion page
-            return_url: `http://${host}:80/complete`,
+            return_url: complete_url,
         },
     });
 

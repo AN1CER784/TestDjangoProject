@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from pprint import pprint
 from typing import Literal, Optional, TypedDict, List
 
 import stripe
+from django.urls import reverse
 
 from TestDjangoProject.settings import STRIPE_SECRET_KEY
 from goods.models import Order
@@ -87,13 +89,13 @@ class StripeService:
             items.append(li)
         return items
 
-    def _build_session_params(self, host: str, line_items: List[LineItem]) -> SessionParams:
+    def _build_session_params(self, success_url: str, cancel_url: str, line_items: List[LineItem]) -> SessionParams:
         """Создает параметры для Stripe Checkout Session."""
         params: SessionParams = {
             "line_items": line_items,
             "mode": "payment",
-            "success_url": f"http://{host}:80/success/",
-            "cancel_url": f"http://{host}:80/cancel/",
+            "success_url": f"{success_url}",
+            "cancel_url": f"{cancel_url}",
             "discounts": None,
         }
         discount = self._get_discount()
@@ -101,9 +103,9 @@ class StripeService:
             params["discounts"] = [{"coupon": discount.stripe_coupon_id}]
         return params
 
-    def create_checkout_session(self, host: str) -> str:
+    def create_checkout_session(self, success_url: str, cancel_url: str) -> str:
         """Создает Stripe Checkout Session и возвращает его session_id."""
-        params = self._build_session_params(host, self._create_line_items())
+        params = self._build_session_params(success_url, cancel_url, self._create_line_items())
         session = stripe.checkout.Session.create(**params)
         return session.id
 
