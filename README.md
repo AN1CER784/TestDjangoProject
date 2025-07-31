@@ -68,7 +68,7 @@
    docker container exec -it testdjangoproject-web-1 python manage.py createsuperuser
    ```
 
-6. ** Используя Stripe CLI запустить локальный слушатель вебхуков для обновления статуса заказов (Опционально)
+6. **Используя Stripe CLI запустить локальный слушатель вебхуков для обновления статуса заказов (Опционально)**
     ```bash
    stripe listen --forward-to localhost:8000/webhooks/stripe/
    ```
