@@ -1,12 +1,15 @@
+
 from django.http import JsonResponse
 from django.urls import reverse
 from django.views import View
 from django.views.generic import DetailView, TemplateView
-
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from TestDjangoProject import settings
 from goods.mixins import DataMixin
 from goods.models import Discount, Tax
 from goods.services.db_service import create_order
-from goods.services.stripe_service import StripeService
+from goods.services.stripe_service import StripeService, WebHookStripeService
 from goods.utils import get_by_pk
 
 
@@ -21,12 +24,16 @@ class ItemView(DataMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user_context = self.get_user_context(title="Страница товара", stripe_public_key=True,
-                                             item_buy_url=self.request.build_absolute_uri(reverse('goods:item_buy', kwargs={"id": self.object.pk})),
-                                             complete_url=self.request.build_absolute_uri(reverse('goods:complete_page')))
+                                             item_buy_url=self.request.build_absolute_uri(
+                                                 reverse('goods:item_buy', kwargs={"id": self.object.pk})),
+                                             complete_url=self.request.build_absolute_uri(
+                                                 reverse('goods:complete_page')))
         return context | user_context
 
 
 class ItemBuyView(DataMixin, View):
+    """Обработка покупки при помощи StripeService; получает id возвращает либо сlientSecret либо sessionId"""
+
     def get(self, request, id):
         item = self.get_item(pk=id)
         # TODO: В продакшене тут логика получения скидки (из корзины/по купону и др.) и доп сбора (по типу товара, фиксированный и др.), для теста берем первую скидку и доп сбор по pk=1.
@@ -74,3 +81,18 @@ class CancelView(DataMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         user_context = self.get_user_context(title="Покупка была отменена")
         return context | user_context
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class StripeWebhookView(View):
+    """
+    Обработка Stripe вебхуков.
+    """
+
+    def post(self, request, *args, **kwargs):
+        payload = request.body
+        sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
+        endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
+        result = WebHookStripeService().get_webhook_response(payload, sig_header, endpoint_secret)
+        return result
+
