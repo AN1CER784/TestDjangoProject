@@ -11,12 +11,12 @@ def update_order_currency(sender, instance: Order, action, **kwargs):
     """
     if action in ("post_add", "post_remove", "post_clear"):
         currencies = list(instance.items.values_list("currency", flat=True).distinct())
-
-        if len(currencies) > 1:
+        unique = set(currencies)
+        if len(unique) > 1:
             raise ValueError("Все товары в заказе должны быть в одной валюте")
 
-        if currencies:
-            new_currency = currencies[0]
+        new_currency = unique.pop() if unique else None
+        if instance.currency != new_currency:
             if instance.currency != new_currency:
                 instance.currency = new_currency
                 instance.save(update_fields=["currency"])

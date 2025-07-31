@@ -8,6 +8,11 @@ def create_order(items: list[Item], discount: Optional[Discount] = None, tax: Op
     order = Order.objects.create(discount=discount, tax=tax)
     order.items.add(*items)
 
-    order._prefetched_objects_cache = {"items": items}
+    order = (
+        Order.objects
+        .select_related('discount', 'tax')
+        .prefetch_related('items')
+        .get(pk=order.pk)
+    )
 
     return order

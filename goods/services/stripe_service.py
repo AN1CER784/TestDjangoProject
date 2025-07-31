@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from pprint import pprint
 from typing import Literal, Optional, TypedDict, List
 
 import stripe
-from django.urls import reverse
+from django.http import JsonResponse, HttpResponse
 
 from TestDjangoProject.settings import STRIPE_SECRET_KEY
 from goods.models import Order
@@ -31,15 +30,9 @@ class LineItem(TypedDict):
 
 
 @dataclass
-class Tax:
-    """Структура для налога"""
-    stripe_tax_id: str
-
-
-@dataclass
-class Discount:
-    """Структура для скидки"""
-    stripe_coupon_id: str
+class StripeEntity:
+    """Структура для ресурса в Stripe """
+    stripe_id: str
 
 
 class SessionParams(TypedDict):
@@ -48,6 +41,7 @@ class SessionParams(TypedDict):
     mode: Literal["payment"]
     success_url: str
     cancel_url: str
+    metadata: dict[Literal["order_id"], int]
     discounts: Optional[list[dict[str, str]]]
 
 
@@ -59,16 +53,16 @@ class StripeService:
         self._items = list(order.items.all())
         stripe.api_key = STRIPE_SECRET_KEY
 
-    def _get_discount(self) -> Optional[Discount]:
+    def _get_discount(self) -> Optional[StripeEntity]:
         """Возвращает Discount объект для Stripe, если скидка есть."""
-        if self.order.discount and self.order.discount.stripe_coupon_id:
-            return Discount(self.order.discount.stripe_coupon_id)
+        if self.order.discount and self.order.discount.stripe_id:
+            return StripeEntity(self.order.discount.stripe_id)
         return None
 
-    def _get_tax(self) -> Optional[Tax]:
+    def _get_tax(self) -> Optional[StripeEntity]:
         """Возвращает Tax объект для Stripe, если он есть."""
-        if self.order.tax and self.order.tax.stripe_tax_rate_id:
-            return Tax(self.order.tax.stripe_tax_rate_id)
+        if self.order.tax and self.order.tax.stripe_id:
+            return StripeEntity(self.order.tax.stripe_id)
         return None
 
     def _create_line_items(self) -> List[LineItem]:
@@ -85,7 +79,7 @@ class StripeService:
                 "quantity": 1,
             }
             if tax:
-                li["tax_rates"] = [tax.stripe_tax_id]
+                li["tax_rates"] = [tax.stripe_id]
             items.append(li)
         return items
 
@@ -96,11 +90,12 @@ class StripeService:
             "mode": "payment",
             "success_url": f"{success_url}",
             "cancel_url": f"{cancel_url}",
+            "metadata": {"order_id": self.order.id},
             "discounts": None,
         }
         discount = self._get_discount()
         if discount:
-            params["discounts"] = [{"coupon": discount.stripe_coupon_id}]
+            params["discounts"] = [{"coupon": discount.stripe_id}]
         return params
 
     def create_checkout_session(self, success_url: str, cancel_url: str) -> str:
@@ -116,13 +111,13 @@ class StripeService:
 
         discount = self._get_discount()
         if discount:
-            coupon = stripe.Coupon.retrieve(discount.stripe_coupon_id)
+            coupon = stripe.Coupon.retrieve(discount.stripe_id)
             if coupon.percent_off:
                 total_cents -= int(total_cents * coupon.percent_off / 100)
 
         tax = self._get_tax()
         if tax:
-            tax_rate = stripe.TaxRate.retrieve(tax.stripe_tax_id)
+            tax_rate = stripe.TaxRate.retrieve(tax.stripe_id)
             if tax_rate.percentage:
                 total_cents += int(total_cents * tax_rate.percentage / 100)
 
@@ -134,5 +129,38 @@ class StripeService:
         intent = stripe.PaymentIntent.create(
             amount=amount,
             currency=self.order.currency,
+            metadata={"order_id": self.order.id},
         )
         return intent.client_secret
+
+
+class WebHookStripeService:
+    @classmethod
+    def set_order_from_web_hook(cls, obj_data_from_webhook: dict) -> Order:
+        """Находит заказ по order_id из webhook и ставит статус InProgress."""
+        order_id = obj_data_from_webhook['metadata'].get('order_id')
+        order = Order.objects.filter(id=order_id).first()
+        if order:
+            order.status = "InProgress"
+            order.save(update_fields=["status"])
+            return order
+
+    @classmethod
+    def get_webhook_response(cls, payload, sig_header, endpoint_secret) -> JsonResponse | HttpResponse:
+        """Обрабатывает Stripe webhook, проверяет подпись и обновляет заказ."""
+        try:
+            event = stripe.Webhook.construct_event(
+                payload=payload, sig_header=sig_header, secret=endpoint_secret
+            )
+        except ValueError:
+            return HttpResponse(status=400)
+        except stripe.error.SignatureVerificationError:
+            return HttpResponse(status=400)
+
+        if event['type'] == 'checkout.session.completed' or event["type"] == "payment_intent.succeeded":
+            obj_data_from_webhook = event['data']['object']
+            order = cls.set_order_from_web_hook(obj_data_from_webhook)
+            if not order:
+                return JsonResponse({"error": "Order not found"}, status=404)
+        return HttpResponse(status=200)
+
