@@ -54,6 +54,7 @@ class OrderModelTest(TestCase):
     def test_create_order_and_add_items(self):
         order = Order.objects.create()
         self.assertEqual(order.currency, "usd")
+        self.assertEqual(order.status, "Created")
 
         order.items.set([self.i1, self.i2])
         self.assertEqual(
@@ -69,7 +70,7 @@ class DiscountModelTest(TestCase):
         disc = Discount(name="TestSale", percentage=15)
         disc.full_clean()
         disc.save()
-        self.assertEqual(disc.stripe_coupon_id, "coupon_12345")
+        self.assertEqual(disc.stripe_id, "coupon_12345")
         mock_coupon_create.assert_called_once_with(
             percent_off=15,
             duration="forever",
@@ -90,7 +91,7 @@ class TaxModelTest(TestCase):
         tax = Tax(name="VAT", percentage=20)
         tax.full_clean()
         tax.save()
-        self.assertEqual(tax.stripe_tax_rate_id, "txr_67890")
+        self.assertEqual(tax.stripe_id, "txr_67890")
         mock_taxrate_create.assert_called_once_with(
             display_name="VAT",
             inclusive=False,

@@ -1,11 +1,16 @@
+import json
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
-from django.test import TestCase
+import stripe
+from django.http import HttpResponse, JsonResponse
+from django.test import TestCase, override_settings
 
-from goods.models import Item, Order, Discount, Tax
+from goods.models import Item, Discount, Tax
+from goods.models import Order
 from goods.services.db_service import create_order
-from goods.services.stripe_service import StripeService, Tax as StripeTax, Discount as StripeDiscount
+from goods.services.stripe_service import StripeService, StripeEntity
+from goods.services.stripe_service import WebHookStripeService
 from goods.utils import convert_price
 
 
@@ -40,7 +45,7 @@ class StripeServiceLineItemsTest(TestCase):
         self.order.save()
         # моким stripe.TaxRate.retrieve, чтобы у tax_rate.percentage был 15
         with patch("goods.services.stripe_service.StripeService._get_tax",
-                   return_value=StripeTax(stripe_tax_id="txr_123")):
+                   return_value=StripeEntity(stripe_id="txr_123")):
             line_items = self.stripe_service._create_line_items()
             for li in line_items:
                 self.assertIn("tax_rates", li)
@@ -64,8 +69,8 @@ class StripeServiceTaxDiscountTest(TestCase):
         self.order.tax = tax
         self.order.save()
         result = self.stripe_service._get_tax()
-        self.assertIsInstance(result, StripeTax)
-        self.assertEqual(result.stripe_tax_id, tax.stripe_tax_rate_id)
+        self.assertIsInstance(result, StripeEntity)
+        self.assertEqual(result.stripe_id, tax.stripe_id)
 
     def test_get_discount_none(self):
         self.assertIsNone(self.stripe_service._get_discount())
@@ -75,8 +80,8 @@ class StripeServiceTaxDiscountTest(TestCase):
         self.order.discount = disc
         self.order.save()
         result = self.stripe_service._get_discount()
-        self.assertIsInstance(result, StripeDiscount)
-        self.assertEqual(result.stripe_coupon_id, disc.stripe_coupon_id)
+        self.assertIsInstance(result, StripeEntity)
+        self.assertEqual(result.stripe_id, disc.stripe_id)
 
 
 class StripeServiceSessionParamsTest(TestCase):
@@ -88,7 +93,7 @@ class StripeServiceSessionParamsTest(TestCase):
         self.order = Order.objects.create(currency="usd")
         self.order.items.add(self.item)
         self.stripe_service = StripeService(order=self.order)
-        params = self.stripe_service._build_session_params(line_items=self.line_items)
+        params = self.stripe_service._build_session_params(line_items=self.line_items, cancel_url="http://localhost/cancel", success_url="http://localhost/success")
         self.assertEqual(params["line_items"], self.line_items)
         self.assertEqual(params["mode"], "payment")
         self.assertIn("success_url", params)
@@ -98,9 +103,9 @@ class StripeServiceSessionParamsTest(TestCase):
     def test_get_session_params_with_discount(self):
         self.order = MagicMock()
         self.stripe_service = StripeService(order=self.order)
-        fake_disc = StripeDiscount(stripe_coupon_id="coupon_xyz")
+        fake_disc = StripeEntity(stripe_id="coupon_xyz")
         self.order.discount = fake_disc
-        params = self.stripe_service._build_session_params(line_items=self.line_items)
+        params = self.stripe_service._build_session_params(line_items=self.line_items, cancel_url="http://localhost/cancel", success_url="http://localhost/success")
         self.assertIn("discounts", params)
         self.assertEqual(params["discounts"], [{"coupon": "coupon_xyz"}])
 
@@ -115,7 +120,7 @@ class StripeServiceCreateSessionTest(TestCase):
     @patch("stripe.checkout.Session.create")
     def test_create_stripe_session_calls_api(self, mock_create):
         mock_create.return_value = MagicMock(id="sess_abc123")
-        session_id = self.stripe_service.create_checkout_session()
+        session_id = self.stripe_service.create_checkout_session(cancel_url="http://localhost/cancel", success_url="http://localhost/success" )
         mock_create.assert_called_once()
         self.assertEqual(session_id, "sess_abc123")
 
@@ -168,7 +173,8 @@ class StripeServicePaymentIntentTest(TestCase):
         client_secret = self.stripe_service.create_payment_intent()
         mock_create_intent.assert_called_once_with(
             amount=convert_price(self.i1.price),
-            currency="usd"
+            currency="usd",
+            metadata={"order_id": self.order.id},
         )
         self.assertEqual(client_secret, "secret_123")
 
@@ -190,7 +196,6 @@ class CreateOrderTests(TestCase):
 
     def test_create_order_with_discount_and_tax(self):
         order = create_order(items=[self.item1], discount=self.discount, tax=self.tax)
-
         self.assertEqual(order.discount, self.discount)
         self.assertEqual(order.tax, self.tax)
         self.assertEqual(order.items.count(), 1)
@@ -202,3 +207,72 @@ class CreateOrderTests(TestCase):
             _ = order.discount
             _ = order.tax
             list(order.items.all())
+
+
+@override_settings(STRIPE_WEBHOOK_SECRET="whsec_testsecret")
+class WebHookStripeServiceTests(TestCase):
+    def setUp(self):
+        self.order = Order.objects.create(status="Created")
+        self.good_payload = json.dumps({
+            "type": "checkout.session.completed",
+            "data": {"object": {"metadata": {"order_id": str(self.order.id)}}}
+        }).encode()
+        self.sig_header = "t=123,v1=signature"
+
+    @patch("stripe.Webhook.construct_event")
+    def test_get_webhook_response_invalid_json(self, mock_construct):
+        mock_construct.side_effect = ValueError()
+        resp = WebHookStripeService.get_webhook_response(
+            payload=b"not a json", sig_header=self.sig_header, endpoint_secret="whsec_test"
+        )
+        self.assertIsInstance(resp, HttpResponse)
+        self.assertEqual(resp.status_code, 400)
+
+    @patch("stripe.Webhook.construct_event")
+    def test_get_webhook_response_invalid_signature(self, mock_construct):
+        mock_construct.side_effect = stripe.error.SignatureVerificationError(
+            message="sig fail", sig_header=self.sig_header
+        )
+        resp = WebHookStripeService.get_webhook_response(
+            payload=self.good_payload, sig_header=self.sig_header, endpoint_secret="whsec_test"
+        )
+        self.assertIsInstance(resp, HttpResponse)
+        self.assertEqual(resp.status_code, 400)
+
+    @patch("stripe.Webhook.construct_event")
+    def test_get_webhook_response_success_updates_order(self, mock_construct):
+        mock_construct.return_value = json.loads(self.good_payload)
+        resp = WebHookStripeService.get_webhook_response(
+            payload=self.good_payload, sig_header=self.sig_header, endpoint_secret="whsec_testsecret"
+        )
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, "InProgress")
+        self.assertIsInstance(resp, HttpResponse)
+        self.assertEqual(resp.status_code, 200)
+
+    @patch("stripe.Webhook.construct_event")
+    def test_get_webhook_response_order_not_found(self, mock_construct):
+        payload = json.dumps({
+            "type": "payment_intent.succeeded",
+            "data": {"object": {"metadata": {"order_id": "9999"}}}
+        }).encode()
+        mock_construct.return_value = json.loads(payload)
+        resp = WebHookStripeService.get_webhook_response(
+            payload=payload, sig_header=self.sig_header, endpoint_secret="whsec_testsecret"
+        )
+        self.assertIsInstance(resp, JsonResponse)
+        self.assertEqual(resp.status_code, 404)
+        self.assertJSONEqual(resp.content, {"error": "Order not found"})
+
+    @patch("stripe.Webhook.construct_event")
+    def test_set_order_from_web_hook_returns_order(self, mock_construct):
+        obj = {"metadata": {"order_id": str(self.order.id)}}
+        updated = WebHookStripeService.set_order_from_web_hook(obj)
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated.id, self.order.id)
+        self.assertEqual(updated.status, "InProgress")
+
+    def test_set_order_from_web_hook_none_if_missing(self):
+        obj = {"metadata": {}}
+        updated = WebHookStripeService.set_order_from_web_hook(obj)
+        self.assertIsNone(updated)
