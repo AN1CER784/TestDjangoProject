@@ -35,7 +35,6 @@ class ItemBuyView(CacheByIPMixin, DataMixin, View):
     """Обработка покупки при помощи StripeService; получает id возвращает либо сlientSecret либо sessionId"""
 
     def get(self, request, id):
-
         session_key = self.get_session(request)
 
         cached_response = self.get_cached_response(session_key, id)
@@ -61,7 +60,7 @@ class ItemBuyView(CacheByIPMixin, DataMixin, View):
         # Реализация со stripe payment intent
         client_secret = stripe_service.create_payment_intent()
         response_data = {"clientSecret": client_secret}
-        self.set_cached_response(session_key, id, response_data, 60)
+        self.set_cached_response(session_key, id, response_data, 15)
         return JsonResponse(response_data)
 
 
