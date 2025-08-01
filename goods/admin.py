@@ -1,5 +1,4 @@
 from django.contrib import admin
-from django.urls import reverse
 
 from .models import Item, Order, Discount, Tax
 
@@ -10,7 +9,6 @@ class ItemAdmin(admin.ModelAdmin):
     search_fields = ("name", "description")
     list_filter = ("price",)
     ordering = ("id",)
-
 
 
 @admin.register(Discount)

@@ -6,7 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, TemplateView
 
 from TestDjangoProject import settings
-from goods.mixins import DataMixin, CacheByIPMixin
+from goods.mixins import DataMixin, CacheMixin
 from goods.models import Discount, Tax
 from goods.services.db_service import create_or_get_order
 from goods.services.stripe_service import StripeService, WebHookStripeService
@@ -31,11 +31,10 @@ class ItemView(DataMixin, DetailView):
         return context | user_context
 
 
-class ItemBuyView(CacheByIPMixin, DataMixin, View):
+class ItemBuyView(CacheMixin, DataMixin, View):
     """Обработка покупки при помощи StripeService; получает id возвращает либо сlientSecret либо sessionId"""
 
     def get(self, request, id):
-
         session_key = self.get_session(request)
 
         cached_response = self.get_cached_response(session_key, id)
@@ -61,7 +60,7 @@ class ItemBuyView(CacheByIPMixin, DataMixin, View):
         # Реализация со stripe payment intent
         client_secret = stripe_service.create_payment_intent()
         response_data = {"clientSecret": client_secret}
-        self.set_cached_response(session_key, id, response_data, 60)
+        self.set_cached_response(session_key, id, response_data, 15)
         return JsonResponse(response_data)
 
 

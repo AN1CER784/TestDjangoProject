@@ -28,7 +28,7 @@ class DataMixin:
         return request.session.session_key
 
 
-class CacheByIPMixin:
+class CacheMixin:
     def get_cache_key(self, session_key: str, obj_id: int) -> str | None:
         """Генерируем ключ для кэша."""
         return f"session_buy_{session_key}_{obj_id}"
