@@ -70,7 +70,7 @@
 
 6. **Используя Stripe CLI запустить локальный слушатель вебхуков для обновления статуса заказов (Опционально)**
     ```bash
-   stripe listen --forward-to localhost:8000/webhooks/stripe/
+   stripe listen --forward-to localhost:80/webhooks/stripe/
    ```
 ---
 
@@ -158,6 +158,7 @@
   * `tax` — `ForeignKey(Tax, null=True, blank=True)`
   * `currency` — `CharField(choices=['usd','rub'], default='usd')`
   * `status` — `CharField(choices=['Created','InProgress','Done'], default='Created')`
+  * `session_key` — `CharField`
   * `created_at` (от `TimestampedModel`)
   * **`status`** обновляется по Stripe-вебхукам
 

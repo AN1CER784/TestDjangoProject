@@ -145,6 +145,9 @@ class Order(TimestampedModel):
         max_length=15, choices=ORDER_STATUS_CHOICES,
         default="Created", verbose_name="Статус"
     )
+    session_key = models.CharField(
+        max_length=255, verbose_name="Ключ Сессии"
+    )
 
     class Meta:
         db_table = "order"

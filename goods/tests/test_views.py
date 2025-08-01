@@ -26,7 +26,9 @@ class ItemViewTestCase(TestCase):
         self.assertContains(response, self.item.price)
         self.assertContains(response, "₽")
 
-    def test_invalid_item(self):
+    @patch("goods.views.ItemBuyView.get_session")
+    def test_invalid_item(self, mock_session):
+        mock_session.return_value = "session_123"
         response = self.client.get(reverse("goods:item_lookout", kwargs={"id": self.item.id + 213}))
         self.assertEqual(response.status_code, 404)
 

@@ -8,7 +8,7 @@ from django.test import TestCase, override_settings
 
 from goods.models import Item, Discount, Tax
 from goods.models import Order
-from goods.services.db_service import create_order
+from goods.services.db_service import create_or_get_order, get_order_by_user_data
 from goods.services.stripe_service import StripeService, StripeEntity
 from goods.services.stripe_service import WebHookStripeService
 from goods.utils import convert_price
@@ -93,7 +93,9 @@ class StripeServiceSessionParamsTest(TestCase):
         self.order = Order.objects.create(currency="usd")
         self.order.items.add(self.item)
         self.stripe_service = StripeService(order=self.order)
-        params = self.stripe_service._build_session_params(line_items=self.line_items, cancel_url="http://localhost/cancel", success_url="http://localhost/success")
+        params = self.stripe_service._build_session_params(line_items=self.line_items,
+                                                           cancel_url="http://localhost/cancel",
+                                                           success_url="http://localhost/success")
         self.assertEqual(params["line_items"], self.line_items)
         self.assertEqual(params["mode"], "payment")
         self.assertIn("success_url", params)
@@ -105,7 +107,9 @@ class StripeServiceSessionParamsTest(TestCase):
         self.stripe_service = StripeService(order=self.order)
         fake_disc = StripeEntity(stripe_id="coupon_xyz")
         self.order.discount = fake_disc
-        params = self.stripe_service._build_session_params(line_items=self.line_items, cancel_url="http://localhost/cancel", success_url="http://localhost/success")
+        params = self.stripe_service._build_session_params(line_items=self.line_items,
+                                                           cancel_url="http://localhost/cancel",
+                                                           success_url="http://localhost/success")
         self.assertIn("discounts", params)
         self.assertEqual(params["discounts"], [{"coupon": "coupon_xyz"}])
 
@@ -120,7 +124,8 @@ class StripeServiceCreateSessionTest(TestCase):
     @patch("stripe.checkout.Session.create")
     def test_create_stripe_session_calls_api(self, mock_create):
         mock_create.return_value = MagicMock(id="sess_abc123")
-        session_id = self.stripe_service.create_checkout_session(cancel_url="http://localhost/cancel", success_url="http://localhost/success" )
+        session_id = self.stripe_service.create_checkout_session(cancel_url="http://localhost/cancel",
+                                                                 success_url="http://localhost/success")
         mock_create.assert_called_once()
         self.assertEqual(session_id, "sess_abc123")
 
@@ -185,9 +190,35 @@ class CreateOrderTests(TestCase):
         self.item2 = Item.objects.create(name="Pen", price=200, description="Blue pen")
         self.discount = Discount.objects.create(percentage=10, name="10% DISCOUNT")
         self.tax = Tax.objects.create(percentage=10, name="10% TAX")
+        self.session_key = "session_123"
+
+    def test_get_order_by_user_data_no_existing(self):
+        result = get_order_by_user_data(
+            items=[self.item1, self.item2],
+            session_key=self.session_key,
+        )
+        self.assertIsNone(result)
+
+    def test_get_order_by_user_data_match_exact(self):
+        order = Order.objects.create(
+            session_key=self.session_key,
+            discount=self.discount,
+            tax=self.tax,
+            status="Created",
+        )
+        order.items.set([self.item1, self.item2])
+
+        found = get_order_by_user_data(
+            items=[self.item1, self.item2],
+            session_key=self.session_key,
+            discount=self.discount,
+            tax=self.tax,
+        )
+        self.assertIsNotNone(found)
+        self.assertEqual(found.pk, order.pk)
 
     def test_create_order_with_items_only(self):
-        order = create_order(items=[self.item1, self.item2])
+        order = create_or_get_order(items=[self.item1, self.item2], session_key=self.session_key)
 
         self.assertEqual(Order.objects.count(), 1)
         self.assertEqual(order.items.count(), 2)
@@ -195,14 +226,16 @@ class CreateOrderTests(TestCase):
         self.assertIsNone(order.tax)
 
     def test_create_order_with_discount_and_tax(self):
-        order = create_order(items=[self.item1], discount=self.discount, tax=self.tax)
+        order = create_or_get_order(items=[self.item1], discount=self.discount, tax=self.tax,
+                                    session_key=self.session_key)
         self.assertEqual(order.discount, self.discount)
         self.assertEqual(order.tax, self.tax)
         self.assertEqual(order.items.count(), 1)
         self.assertIn(self.item1, order.items.all())
 
     def test_order_relations_are_prefetched(self):
-        order = create_order(items=[self.item1], discount=self.discount, tax=self.tax)
+        order = create_or_get_order(items=[self.item1], discount=self.discount, tax=self.tax,
+                                    session_key="Test session key")
         with self.assertNumQueries(0):
             _ = order.discount
             _ = order.tax
