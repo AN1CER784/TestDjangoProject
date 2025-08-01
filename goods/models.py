@@ -72,7 +72,7 @@ class Discount(StripeEntity):
         "duration": "forever",
     }
 
-    def _stripe_create(self):
+    def _stripe_create(self) -> stripe.Coupon:
         return stripe.Coupon.create(
             percent_off=self.percentage,
             name=self.name,
@@ -91,7 +91,7 @@ class Tax(StripeEntity):
         "inclusive": False,
     }
 
-    def _stripe_create(self):
+    def _stripe_create(self) -> stripe.TaxRate:
         return stripe.TaxRate.create(
             display_name=self.name,
             percentage=self.percentage,
