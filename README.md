@@ -1,4 +1,4 @@
-# TestDjangoProject
+# Тестовое задание (Django)
 
 Полноценный пример Django-приложения с интеграцией Stripe Checkout и Payment Intent, моделями Item, Order, Discount, Tax, админкой и тестами.
 
