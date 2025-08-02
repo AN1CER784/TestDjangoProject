@@ -10,7 +10,6 @@ from goods.mixins import DataMixin, CacheMixin
 from goods.models import Discount, Tax
 from goods.services.db_service import create_or_get_order
 from goods.services.stripe_service import StripeService, WebHookStripeService
-from goods.utils import get_by_pk
 
 
 class ItemView(DataMixin, DetailView):
@@ -43,8 +42,8 @@ class ItemBuyView(CacheMixin, DataMixin, View):
 
         # TODO: В продакшене тут логика получения скидки (из корзины/по купону и др.) и доп сбора (по типу товара, фиксированный и др.), для теста берем первую скидку и доп сбор по pk=1.
         item = self.get_item(pk=id)
-        discount = get_by_pk(Discount, pk=1)
-        tax = get_by_pk(Tax, pk=1)
+        discount = Discount.objects.first()
+        tax = Tax.objects.first()
 
         # TODO: В продакшене тут логика составления заказа, например, по корзине с последующей привязкой по пользователю, для теста берем тот item, по которому поступил get запрос.
         order = create_or_get_order(items=[item], session_key=session_key, discount=discount, tax=tax)
@@ -60,7 +59,7 @@ class ItemBuyView(CacheMixin, DataMixin, View):
         # Реализация со stripe payment intent
         client_secret = stripe_service.create_payment_intent()
         response_data = {"clientSecret": client_secret}
-        self.set_cached_response(session_key, id, response_data, 15)
+        self.set_cached_response(session_key, id, response_data, 60)
         return JsonResponse(response_data)
 
 

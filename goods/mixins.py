@@ -3,7 +3,7 @@ from django.http import Http404
 
 from TestDjangoProject.settings import STRIPE_PUBLIC_KEY
 from goods.models import Item
-from goods.utils import get_by_pk
+
 
 
 class DataMixin:
@@ -17,7 +17,7 @@ class DataMixin:
 
     def get_item(self, pk: int) -> Item:
         """Получаем товар, если нет возвращаем 404"""
-        item = get_by_pk(Item, pk=pk)
+        item = Item.objects.filter(pk=pk).first()
         if not item:
             raise Http404("Item not found")
         return item
